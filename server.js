@@ -17,11 +17,12 @@ const User = require('./models/Users');
 const {isLoggedIn} = require('./config/authorizations');
 const Campaign = require('./models/Campaign');
 const randomstring = require('randomstring')
-
+const dotenv = require('dotenv')
+dotenv.config()
 const app = express();
 
 // DB Connection
-mongoose.connect('mongodb+srv://Grace:kK3HmFhWgvaxoQmh@waawanonymous.qw9af.mongodb.net/waawanonymous?retryWrites=true&w=majority')
+mongoose.connect(process.env.DATABASE)
     .then(dbconnect => console.log('Database connection successful'))
     .catch(error => console.log('Database connection error:', error.message));
 
@@ -41,7 +42,7 @@ app.use(session({
     saveUninitialized: true,
     cookie: {maxAge: Date.now() + 3600000},
     store: MongoStore.create({
-        mongoUrl: 'mongodb+srv://Grace:kK3HmFhWgvaxoQmh@waawanonymous.qw9af.mongodb.net/waawanonymous?retryWrites=true&w=majority',
+        mongoUrl: process.env.DATABASE,
         ttl: 14 * 24 * 60 * 60
     })
 }));
@@ -90,7 +91,7 @@ app.get('/', async (req, res) => {
     res.redirect('/user/login');
 });
 
-app.post('/message/create-message', async (req, res, next) =>{
+app.post('/campaign/campaign-message', async (req, res, next) =>{
     let {message} = req.body;
 
     if(!message){
@@ -168,7 +169,7 @@ app.post('/user/register', async (req, res) => {
 });
 
 app.get('/user/login', (req, res) => {
-    if (req.user) res.redirect('/user/profile')
+    if (req.user) return res.redirect('/user/profile')
     res.render('login');
 })
 
@@ -211,10 +212,45 @@ link: campaignLink,
 
 app.get('/campaign/single-campaign/:campaignId', async (req, res) => {
  const singleCampaign =  await Campaign.findOne({link: `http://localhost:3000/campaign/single-campaign/${req.params.campaignId}`})
- .populate()
-console.log(singleCampaign)
+ .populate('user');
+if(!singleCampaign){
+    console.log('wrong')
+    req.flash('error-message', 'Invalid Link')
+}
+return res.render('campaignMessage', {singleCampaign})
+});
+
+
+app.post('/campaign/single-campaign/:campaignId', async (req, res) => {
+   let {message} = req.body;
+   if(!message){
+       req.flash('error-message', 'please enter a message')
+       return res.redirect('/')
+   }
+   let campaignExist = await Campaign.findOne({_id: req.params.campaignId});
+   if (!campaignExist){
+       req.flash('error-message', 'No such campaign found')
+       return res.redirect('back')
+   }
+let newMessage = new Message({
+    message
+})
+newMessage.save()
+.then((message) => {
+    campaignExist.messages.push(message._id);
+    campaignExist.save();
+    req.flash('success-message', 'Message sent')
+    res.redirect('back')
+})
+.catch((error) => {
+    if (error){
+        req.flash('error-message', error.message)
+        res.redirect('/')
+    }
 })
 
+})
+   
 
 app.get('/user/logout', (req, res) => {
     req.logOut();
